@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>School Bus Routes</title>
+<style>
+  :root{--am:#2563eb;--pm:#d97706}
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    background:linear-gradient(160deg,#eef2ff,#f8fafc);color:#1f2937}
+  .wrap{max-width:820px;margin:0 auto;padding:48px 20px 60px}
+  h1{font-size:30px;margin:0 0 6px}
+  .sub{color:#6b7280;margin:0 0 32px;font-size:15px}
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media(max-width:640px){.cards{grid-template-columns:1fr}}
+  .card{display:block;text-decoration:none;color:inherit;background:#fff;border-radius:14px;padding:24px;
+    box-shadow:0 2px 10px rgba(0,0,0,.08);border:1px solid #eef;transition:transform .12s,box-shadow .12s}
+  .card:hover{transform:translateY(-3px);box-shadow:0 8px 22px rgba(0,0,0,.14)}
+  .badge{display:inline-block;font-size:13px;font-weight:700;color:#fff;border-radius:999px;padding:4px 12px}
+  .am .badge{background:var(--am)}.pm .badge{background:var(--pm)}
+  .card h2{font-size:21px;margin:14px 0 6px}
+  .card p{margin:0;color:#6b7280;font-size:14px;line-height:1.5}
+  .go{margin-top:16px;font-weight:700}
+  .am .go{color:var(--am)}.pm .go{color:var(--pm)}
+  .foot{margin-top:34px;font-size:13px;color:#6b7280;line-height:1.6}
+  .foot code{background:#eef2ff;padding:1px 5px;border-radius:4px}
+  .stat{display:flex;gap:22px;flex-wrap:wrap;margin:22px 0 6px;font-size:14px;color:#374151}
+  .stat b{color:#111}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🚌 School Bus Routes</h1>
+  <p class="sub">Herzl St 155, Tel Aviv-Yafo · 140 kids · 1 big bus + 7 minibuses</p>
+
+  <div class="stat">
+    <div>🏫 <b>Pickup</b>: arrive 08:00 · slowest ≈ 47 min</div>
+    <div>🏠 <b>Return</b>: depart 15:00 · slowest ≈ 49 min</div>
+    <div>All buses under 50 min</div>
+  </div>
+
+  <div class="cards">
+    <a class="card am" href="pickup_routes_baked.html">
+      <span class="badge">MORNING</span>
+      <h2>🏫 To school — Pickup</h2>
+      <p>Buses gather kids from home and arrive at school by <b>08:00</b>. Real street routes, numbered stops with pickup times, and each kid's stop &amp; walk.</p>
+      <div class="go">Open pickup map →</div>
+    </a>
+    <a class="card pm" href="return_routes_baked.html">
+      <span class="badge">AFTERNOON</span>
+      <h2>🏠 From school — Return</h2>
+      <p>Buses leave school at <b>15:00</b> and drop kids near home. Stops re-optimized for the return direction with drop-off times.</p>
+      <div class="go">Open return map →</div>
+    </a>
+  </div>
+
+  <div class="foot">
+    Each map shows the route along real streets, bus stops (numbered, with time), and homes with walk lines.
+    Kid names &amp; Hebrew addresses load automatically from the CSV (<code>kids_pickup.csv</code> / <code>kids_return.csv</code>);
+    you can also load a CSV manually or click <b>Export</b> to download a self-contained copy with the data baked in.
+  </div>
+</div>
+</body>
+</html>
