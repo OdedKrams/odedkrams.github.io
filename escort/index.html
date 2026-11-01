@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="משחק טיסה תלת-ממדי לאחד או שניים: לוו את מטוס התובלה והפילו את מטוסי האויב">
+<meta name="description" content="משחק טיסה תלת-ממדי לאחד, לשניים או ברשת: לוו את מטוס התובלה והפילו את מטוסי האויב">
 <title>מבצע ליווי</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=IBM+Plex+Sans+Hebrew:wght@400;500;700&display=swap">
@@ -127,6 +127,20 @@ h3{font-family:var(--display);font-weight:400;font-size:17px;margin:0 0 6px}
 .stat-grid div{border:1px solid var(--line);border-radius:6px;padding:8px 10px}
 .stat-grid b{display:block;font-family:var(--display);font-weight:400;font-size:24px;font-variant-numeric:tabular-nums}
 .won h2{color:var(--friend)} .lost h2{color:var(--hostile)}
+#netBox{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:8px;padding:12px}
+#roomBox{display:flex;flex-direction:column;gap:6px}
+.net-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn.small{font-size:16px;padding:7px 16px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+#joinCode,#roomLink{font-family:var(--body);font-size:16px;padding:7px 10px;border-radius:6px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);box-sizing:border-box}
+#joinCode{width:8.5em;text-transform:uppercase;letter-spacing:.12em;direction:ltr;text-align:center}
+#roomLink{flex:1 1 200px;min-width:0;direction:ltr;font-size:13px}
+#joinCode:focus-visible,#roomLink:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.room-code{font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:.14em;direction:ltr;display:inline-block;color:var(--amber)}
+.card p.net-status{font-size:14px;color:var(--text)}
+.net-status.ok{color:var(--friend)!important}
+.net-status.err{color:var(--hostile)!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .pilots,.keys2{direction:ltr}
 .pilots > *,.keys2 > *{direction:rtl}
 .card > .seg{align-self:flex-start}
@@ -235,6 +249,25 @@ h3{font-family:var(--display);font-weight:400;font-size:17px;margin:0 0 6px}
       <div class="seg" role="group" aria-label="מספר שחקנים" id="modeSeg">
         <button data-n="1" aria-pressed="true">שחקן אחד</button>
         <button data-n="2" aria-pressed="false">שני שחקנים</button>
+        <button data-n="net" aria-pressed="false">ברשת</button>
+      </div>
+      <div id="netBox" hidden>
+        <div class="net-row">
+          <button class="btn ghost small" id="hostBtn">פתח חדר</button>
+          <span class="lbl">או</span>
+          <label for="joinCode" class="sr">קוד חדר</label>
+          <input id="joinCode" maxlength="5" autocomplete="off" spellcheck="false" placeholder="קוד חדר">
+          <button class="btn ghost small" id="joinBtn">הצטרף</button>
+        </div>
+        <div id="roomBox" hidden>
+          <span class="lbl">קוד החדר</span> <b id="roomCode" class="room-code"></b>
+          <div class="net-row">
+            <input id="roomLink" readonly aria-label="קישור להצטרפות">
+            <button class="btn ghost small" id="copyBtn">העתק קישור</button>
+          </div>
+          <span class="lbl">שלח לחבר את הקישור או את הקוד. הוא צריך לבחור ״ברשת״ ולהקליד את הקוד.</span>
+        </div>
+        <p id="netStatus" class="net-status" role="status">פתח חדר ושלח לחבר את הקוד, או הקלד קוד שקיבלת.</p>
       </div>
       <div class="pilots">
         <div class="pilot">
@@ -323,6 +356,7 @@ h3{font-family:var(--display);font-weight:400;font-size:17px;margin:0 0 6px}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 (function(){
 const V3 = THREE.Vector3;
@@ -527,10 +561,12 @@ const bulletGeo=new THREE.BoxGeometry(.35,.35,7);
 const matPB=[new THREE.MeshBasicMaterial({color:0xffd27a}),new THREE.MeshBasicMaterial({color:0x9fd4ff})],matEB=new THREE.MeshBasicMaterial({color:0xff5040});
 const bullets=[],bulletPool=[];
 const _t1=new V3(),_t2=new V3(),_t3=new V3(),_prev=new V3();
-function spawnBullet(pos,vel,owner){
+const R1=v=>Math.round(v*10)/10,R3=v=>Math.round(v*1000)/1000;
+function spawnBullet(pos,vel,owner,visual){
   let b=bulletPool.pop();
-  if(!b){b={mesh:new THREE.Mesh(bulletGeo,matEB),pos:new V3(),vel:new V3(),life:0,owner:null};scene.add(b.mesh);}
-  b.mesh.visible=true;b.mesh.material=owner?matPB[owner.i]:matEB;b.pos.copy(pos);b.vel.copy(vel);b.life=owner?1.5:2;b.owner=owner;
+  if(!b){b={mesh:new THREE.Mesh(bulletGeo,matEB),pos:new V3(),vel:new V3(),life:0,owner:null,visual:false};scene.add(b.mesh);}
+  b.mesh.visible=true;b.mesh.material=owner?matPB[owner.i]:matEB;b.pos.copy(pos);b.vel.copy(vel);b.life=owner?1.5:2;b.owner=owner;b.visual=!!visual;
+  if(!owner&&S.online&&isHost())S.newEB.push([R1(pos.x),R1(pos.y),R1(pos.z),R1(vel.x),R1(vel.y),R1(vel.z)]);
   b.mesh.position.copy(pos);_t1.copy(pos).add(vel);b.mesh.lookAt(_t1);
   bullets.push(b);
 }
@@ -540,18 +576,23 @@ const _ab=new V3(),_ac=new V3(),_cl=new V3();
 function segSphere(a,b,c,r){_ab.subVectors(b,a);_ac.subVectors(c,a);const L=_ab.lengthSq();let t=L>0?_ac.dot(_ab)/L:0;t=clamp(t,0,1);_cl.copy(a).addScaledVector(_ab,t);return _cl.distanceToSquared(c)<r*r?_cl:null;}
 
 /* ---------- entities ---------- */
-const S={state:'menu',NP:1,t:0,time:0,diff:'normal',invert:false,wave:0,waveTimer:6,endT:0,escHitT:-9,bannerT:0,booms:[],endShown:false,pads:[]};
-const escort={obj:makeTransport(),pos:new V3(0,ESC_ALT,0),vel:new V3(0,0,-ESC_SPEED),hp:100,dist:0,alive:true,flash:0,inv:new THREE.Matrix4(),smokeT:0};
+const S={state:'menu',mode:'solo',online:false,me:0,eid:0,newEB:[],NP:1,t:0,time:0,diff:'normal',invert:false,wave:0,waveTimer:6,endT:0,escHitT:-9,bannerT:0,booms:[],endShown:false,pads:[]};
+const NET={peer:null,conn:null,role:null,code:'',connected:false,remoteName:'',sendT:0,lastRecv:0,timer:0};
+const escort={t:0,obj:makeTransport(),pos:new V3(0,ESC_ALT,0),vel:new V3(0,0,-ESC_SPEED),hp:100,dist:0,alive:true,flash:0,inv:new THREE.Matrix4(),smokeT:0};
 scene.add(escort.obj);
 
 function makePlayer(i){
   const obj=i===0?makeFighter(0xaab7c5,0x5b6b7e,0x8fd7ff):makeFighter(0xc9b48c,0x6d6047,0xffd36b);
   obj.rotation.order='YXZ';scene.add(obj);
   const cam=new THREE.PerspectiveCamera(62,1,1,14000);scene.add(cam);
-  return {i,obj,cam,camPos:new V3(),camLook:new V3(),pos:new V3(),vel:new V3(),fwd:new V3(0,0,-1),yaw:0,pitch:0,roll:0,speed:150,hp:100,dead:false,deathMsg:'',respawnT:0,inv:0,missiles:6,reloadT:0,gunT:0,gunSide:1,lastHit:-9,lock:null,lockT:0,kills:0,score:0,active:i===0,shake:0,mPrev:false,name:'',color:PCOL[i]};
+  return {i,obj,cam,camPos:new V3(),camLook:new V3(),pos:new V3(),vel:new V3(),fwd:new V3(0,0,-1),yaw:0,pitch:0,roll:0,speed:150,hp:100,dead:false,deathMsg:'',respawnT:0,inv:0,missiles:6,reloadT:0,gunT:0,gunSide:1,lastHit:-9,lock:null,lockT:0,kills:0,score:0,active:i===0,shake:0,mPrev:false,name:'',color:PCOL[i],net:null,shooting:false};
 }
 const players=[makePlayer(0),makePlayer(1)];
 const P1=players[0];
+const isHost=()=>!S.online||NET.role==='host';
+const isLocal=p=>!S.online||p.i===S.me;
+const localPlayer=()=>players[S.online?S.me:0];
+const viewers=()=>S.online?[players[S.me]]:players.filter(p=>p.active);
 const enemies=[],missiles=[];
 const teamScore=()=>players.reduce((s,p)=>s+(p.active?p.score:0),0);
 const teamKills=()=>players.reduce((s,p)=>s+(p.active?p.kills:0),0);
@@ -604,21 +645,24 @@ let mouseFire=false;
 const key=c=>!!keys[c];
 const BLOCK=['Space','Enter','NumpadEnter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Slash','Period','Quote'];
 addEventListener('keydown',e=>{
-  if(e.target&&e.target.tagName==='INPUT'){if(e.code==='Enter'&&S.state==='menu')startGame();return;}
+  if(e.target&&e.target.tagName==='INPUT'){
+    if((e.code==='Enter'||e.code==='NumpadEnter')&&S.state==='menu'){if(e.target.id==='joinCode')joinRoom(e.target.value);else if(e.target.id!=='roomLink')menuStart();}
+    return;
+  }
   if((S.state==='play'||S.state==='paused')&&BLOCK.includes(e.code))e.preventDefault();
   keys[e.code]=true;
   if(e.repeat)return;
   if(S.state==='play'){
-    if(e.code==='KeyF'||e.code==='KeyE'||e.code==='KeyQ')fireMissile(P1);
-    if(S.NP===2&&(e.code==='Slash'||e.code==='Period'||e.code==='NumpadAdd'))fireMissile(players[1]);
+    if(e.code==='KeyF'||e.code==='KeyE'||e.code==='KeyQ')fireMissile(localPlayer());
+    if(S.NP===2&&!S.online&&(e.code==='Slash'||e.code==='Period'||e.code==='NumpadAdd'))fireMissile(players[1]);
     if(e.code==='KeyP'||e.code==='Escape')setPaused(true);
   }else if(S.state==='paused'&&(e.code==='KeyP'||e.code==='Escape'))setPaused(false);
   if(e.code==='KeyM')setSound(!soundOn);
 });
 addEventListener('keyup',e=>{keys[e.code]=false;});
 addEventListener('blur',()=>{for(const k in keys)keys[k]=false;mouseFire=false;});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&S.state==='play')setPaused(true);});
-glCanvas.addEventListener('mousedown',e=>{if(S.state!=='play')return;if(e.button===0)mouseFire=true;if(e.button===2)fireMissile(P1);});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&S.state==='play'&&!S.online)setPaused(true);});
+glCanvas.addEventListener('mousedown',e=>{if(S.state!=='play')return;if(e.button===0)mouseFire=true;if(e.button===2)fireMissile(localPlayer());});
 addEventListener('mouseup',e=>{if(e.button===0)mouseFire=false;});
 glCanvas.addEventListener('contextmenu',e=>e.preventDefault());
 
@@ -633,7 +677,7 @@ if(isTouch){
   const hold=(el,prop)=>{el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);touch[prop]=true;el.classList.add('act');});
     const off=()=>{touch[prop]=false;el.classList.remove('act');};el.addEventListener('pointerup',off);el.addEventListener('pointercancel',off);};
   hold($('tFire'),'fire');hold($('tBoost'),'boost');
-  $('tMissile').addEventListener('pointerdown',e=>{e.preventDefault();fireMissile(P1);});
+  $('tMissile').addEventListener('pointerdown',e=>{e.preventDefault();fireMissile(localPlayer());});
 }
 
 /* gamepads: first pad = player 1, second = player 2 */
@@ -646,15 +690,15 @@ function pollPads(){
   if(start&&!startPrev){
     if(S.state==='play')setPaused(true);
     else if(S.state==='paused')setPaused(false);
-    else if(S.state==='menu'||S.endShown)startGame();
+    else if(S.state==='menu'||S.endShown)menuStart();
   }
   startPrev=start;
 }
 const NOCTRL={turn:0,pitch:0,boost:false,shoot:false,missile:false};
 function readCtrl(p){
   const c={turn:0,pitch:0,boost:false,shoot:false,missile:false};
-  const two=S.NP===2;
-  if(p.i===0){
+  const two=S.NP===2&&!S.online,seat=S.online?0:p.i;
+  if(seat===0){
     c.turn=(key('KeyD')?1:0)-(key('KeyA')?1:0);c.pitch=(key('KeyW')?1:0)-(key('KeyS')?1:0);
     if(!two){c.turn+=(key('ArrowRight')?1:0)-(key('ArrowLeft')?1:0);c.pitch+=(key('ArrowUp')?1:0)-(key('ArrowDown')?1:0);}
     c.boost=key('ShiftLeft')||(!two&&key('ShiftRight'))||touch.boost;
@@ -665,7 +709,7 @@ function readCtrl(p){
     c.boost=key('ShiftRight');
     c.shoot=key('Enter')||key('NumpadEnter')||key('Numpad0');
   }
-  const g=S.pads[p.i];
+  const g=S.pads[seat];
   if(g){
     const dz=v=>Math.abs(v)<.18?0:(v-Math.sign(v)*.18)/.82;
     c.turn+=dz(g.axes[0]||0);c.pitch-=dz(g.axes[1]||0);
@@ -680,7 +724,11 @@ function readCtrl(p){
 
 /* ---------- game flow ---------- */
 const nameDefault=i=>S.NP===1?'טייס':'שחקן '+(i+1);
-function nameOf(i){return (($(i?'pilotName2':'pilotName').value||'').trim()||nameDefault(i)).slice(0,16);}
+const myName=()=>(($('pilotName').value||'').trim()||'טייס').slice(0,16);
+function nameOf(i){
+  if(S.online)return i===S.me?myName():(NET.remoteName||'החבר');
+  return (($(i?'pilotName2':'pilotName').value||'').trim()||nameDefault(i)).slice(0,16);
+}
 function placePlayer(p){
   const side=p.i===0?1:-1;
   Object.assign(p,{yaw:0,pitch:0,roll:0,speed:160,hp:100,dead:false,respawnT:0,inv:0,missiles:6,reloadT:0,gunT:0,lastHit:-9,lock:null,lockT:0,shake:0,mPrev:false});
@@ -692,37 +740,57 @@ function resetGame(){
   for(const m of missiles)scene.remove(m.obj);missiles.length=0;
   clearBullets();
   for(const p of fire.arr){p.on=false;p.s.visible=false;}for(const p of smoke.arr){p.on=false;p.s.visible=false;}
-  Object.assign(S,{t:0,time:0,wave:0,waveTimer:6,endT:0,escHitT:-9,booms:[],endShown:false});
-  escort.hp=100;escort.dist=0;escort.alive=true;escort.obj.visible=true;escort.flash=0;escort.pos.set(0,ESC_ALT,0);
+  Object.assign(S,{t:0,time:0,wave:0,waveTimer:6,endT:0,escHitT:-9,booms:[],endShown:false,eid:0,newEB:[]});
+  escort.t=0;escort.hp=100;escort.dist=0;escort.alive=true;escort.obj.visible=true;escort.flash=0;escort.pos.set(0,ESC_ALT,0);
   updateEscort(0,false);
   for(const p of players){
-    p.active=p.i<S.NP;p.kills=0;p.score=0;p.name=nameOf(p.i);
+    p.active=p.i<S.NP;p.kills=0;p.score=0;p.name=nameOf(p.i);p.net=null;p.shooting=false;
     placePlayer(p);p.obj.visible=p.active;
     snapCamera(p);
   }
 }
 function applyLayout(){
-  const two=S.NP===2;
+  const two=S.NP===2&&!S.online;
   app.classList.toggle('two',two);
   $('divider').hidden=!two;$('radar2').hidden=!two;
-  ui[1].el.hidden=!two;
-  ui[0].name.textContent=two?P1.name:'השריון שלך';
-  ui[1].name.textContent=players[1].name;
+  $('pauseBtn').hidden=S.online;
+  if(S.online){
+    ui[0].el.hidden=S.me!==0;ui[1].el.hidden=S.me!==1;
+    ui[S.me].name.textContent='השריון שלך';
+  }else{
+    ui[0].el.hidden=false;ui[1].el.hidden=!two;
+    ui[0].name.textContent=two?P1.name:'השריון שלך';
+    ui[1].name.textContent=players[1].name;
+  }
 }
 function startGame(){
   initAudio();if(ac&&ac.state==='suspended')ac.resume();
   if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
   saveNames();
+  S.online=S.mode==='net'&&NET.connected;
+  S.NP=S.mode==='solo'?1:2;
+  S.me=S.online&&NET.role==='guest'?1:0;
   resetGame();applyLayout();S.state='play';
   $('menu').hidden=true;$('end').hidden=true;$('pause').hidden=true;$('hudLayer').hidden=false;
-  banner('המראה!',S.NP===2?'לוו יחד את מטוס התובלה 10 ק״מ עד שדה היעד':'לווה את מטוס התובלה 10 ק״מ עד שדה היעד');
+  banner('המראה!',S.online?`אתה ו${NET.remoteName||'החבר'} מלווים את מטוס התובלה`:S.NP===2?'לוו יחד את מטוס התובלה 10 ק״מ עד שדה היעד':'לווה את מטוס התובלה 10 ק״מ עד שדה היעד');
+}
+function menuStart(){
+  if(S.mode!=='net'){startGame();return;}
+  if(!NET.connected){netStatus('קודם צריך שחבר יצטרף לחדר.','err');return;}
+  if(NET.role!=='host')return;
+  netSend({t:'start',diff:S.diff});
+  startGame();
 }
 function toMenu(){
+  S.online=false;S.NP=S.mode==='solo'?1:2;
   resetGame();S.state='menu';app.classList.remove('two');$('divider').hidden=true;
   $('menu').hidden=false;$('end').hidden=true;$('pause').hidden=true;$('hudLayer').hidden=true;
   if(engGain)engGain.gain.value=0;
+  updateMenuMode();
 }
+function leaveToMenu(){if(S.online)netSend({t:'menu'});toMenu();}
 function setPaused(p){
+  if(S.online)return;
   if(p&&S.state==='play'){S.state='paused';$('pause').hidden=false;if(engGain)engGain.gain.value=0;for(const k in keys)keys[k]=false;mouseFire=false;}
   else if(!p&&S.state==='paused'){S.state='play';$('pause').hidden=true;last=performance.now();}
 }
@@ -731,7 +799,10 @@ function banner(h,s){$('bH').textContent=h;$('bS').textContent=s||'';$('banner')
 function winGame(){
   if(S.state!=='play')return;
   S.state='won';S.endT=3.2;
-  for(const p of players)if(p.active)p.score+=Math.round(escort.hp*20);
+  if(isHost()){
+    for(const p of players)if(p.active)p.score+=Math.round(escort.hp*20);
+    if(S.online)netSend({t:'end',won:1,sc:players.map(p=>p.score),k:players.map(p=>p.kills)});
+  }
   for(const e of enemies)e.state='flee';
   banner('הגעתם ליעד!','מטוס התובלה נוחת בשלום');
   beep(660,.15,.12);setTimeout(()=>beep(880,.25,.12),160);
@@ -739,6 +810,7 @@ function winGame(){
 function loseGame(){
   if(S.state!=='play')return;
   S.state='lost';S.endT=3.6;escort.hp=0;
+  if(S.online&&isHost())netSend({t:'end',won:0,sc:players.map(p=>p.score),k:players.map(p=>p.kills)});
   const p=escort.pos.clone();
   for(let i=0;i<6;i++)S.booms.push({t:i*.22,pos:p.clone().add(new V3(rand(-25,25),rand(-4,6),rand(-28,28))),sc:i===0?2.6:1.8});
 }
@@ -755,14 +827,17 @@ function showEnd(){
   const box=$('endPlayers');box.textContent='';
   for(const p of players){
     if(!p.active)continue;
-    const r=recordGame(p,won);
+    const r=isLocal(p)?recordGame(p,won):null;
     const line=document.createElement('p');line.className='record'+(p.i?' p2':'');
     if(two){
-      line.textContent=`${r.name}: ${p.kills} הפלות, ${p.score} נקודות `;
-      const sm=document.createElement('small');sm.textContent=r.newBest?'· שיא אישי חדש!':`· השיא: ${r.rec.best}`;line.appendChild(sm);
+      line.textContent=`${p.name}: ${p.kills} הפלות, ${p.score} נקודות `;
+      if(r){const sm=document.createElement('small');sm.textContent=r.newBest?'· שיא אישי חדש!':`· השיא: ${r.rec.best}`;line.appendChild(sm);}
     }else line.textContent=r.newBest?`שיא אישי חדש ל${r.name}!`:`השיא של ${r.name}: ${r.rec.best}`;
     box.appendChild(line);
   }
+  const ab=$('againBtn');
+  ab.disabled=S.online&&NET.role!=='host';
+  ab.textContent=ab.disabled?'מחכים למארח…':'עוד פעם';
   $('end').hidden=false;$('hudLayer').hidden=true;
   if(engGain)engGain.gain.value=0;
 }
@@ -773,10 +848,11 @@ const ENG=[[-22,.9,-1.5],[-11,.9,-1.5],[11,.9,-1.5],[22,.9,-1.5]];
 function updateEscort(dt,moving){
   _escPrev.copy(escort.pos);
   if(moving)escort.dist+=ESC_SPEED*dt;
+  escort.t+=dt;const et=escort.t;
   const k=smooth(TOTAL-2600,TOTAL+400,escort.dist);
-  escort.pos.set(Math.sin(S.t*.11)*16,ESC_ALT-k*380+Math.sin(S.t*.37)*3,-escort.dist);
+  escort.pos.set(Math.sin(et*.11)*16,ESC_ALT-k*380+Math.sin(et*.37)*3,-escort.dist);
   if(dt>0)escort.vel.subVectors(escort.pos,_escPrev).divideScalar(dt);
-  const o=escort.obj;o.position.copy(escort.pos);o.rotation.set(-k*.05*(1-k)*4,Math.cos(S.t*.11)*.02,Math.cos(S.t*.11)*.035);
+  const o=escort.obj;o.position.copy(escort.pos);o.rotation.set(-k*.05*(1-k)*4,Math.cos(et*.11)*.02,Math.cos(et*.11)*.035);
   o.updateMatrixWorld();escort.inv.copy(o.matrixWorld).invert();
   escort.flash=Math.max(0,escort.flash-dt);
   o.userData.body.emissive.setRGB(escort.flash*5,escort.flash*1.2,0);
@@ -792,6 +868,7 @@ function updateEscort(dt,moving){
 }
 function damageEscort(pt){
   if(S.state!=='play')return;
+  if(!isHost()){sparks(pt);return;}
   escort.hp-=DIFF[S.diff].dmgEsc;S.escHitT=S.t;escort.flash=.12;sparks(pt);
   if(S.t-lastTick>.12){lastTick=S.t;noise(.08,2200,.12);}
   if(escort.hp<=0)loseGame();
@@ -799,14 +876,48 @@ function damageEscort(pt){
 
 /* ---------- players ---------- */
 const _right=new V3();
+function updateRemotePlayer(p,dt){
+  const r=p.net;if(!r)return;
+  if(r.dead){
+    if(!p.dead){explosion(p.pos,1.3);p.dead=true;p.obj.visible=false;p.lock=null;}
+    return;
+  }
+  r.age+=dt;
+  _t1.copy(r.pos).addScaledVector(r.fwd,r.speed*Math.min(r.age,.5));
+  if(p.dead||p.pos.distanceTo(_t1)>250){p.dead=false;p.pos.copy(_t1);p.yaw=r.yaw;p.pitch=r.pitch;}
+  else p.pos.lerp(_t1,1-Math.exp(-dt*10));
+  const k=1-Math.exp(-dt*12);
+  p.yaw+=(r.yaw-p.yaw)*k;p.pitch+=(r.pitch-p.pitch)*k;p.roll+=(r.roll-p.roll)*k;
+  p.speed=r.speed;p.hp=r.hp;
+  const cp=Math.cos(p.pitch);
+  p.fwd.set(-Math.sin(p.yaw)*cp,Math.sin(p.pitch),-Math.cos(p.yaw)*cp);
+  p.vel.copy(p.fwd).multiplyScalar(p.speed);
+  p.obj.position.copy(p.pos);p.obj.rotation.set(p.pitch,p.yaw,p.roll,'YXZ');
+  p.obj.visible=r.inv?(Math.floor(S.t*12)%2===0):true;
+  p.gunT-=dt;
+  if(r.shoot&&p.gunT<=0){
+    p.gunT=.075;p.gunSide*=-1;
+    _right.set(Math.cos(p.yaw),0,-Math.sin(p.yaw));
+    _t1.copy(p.pos).addScaledVector(p.fwd,5).addScaledVector(_right,p.gunSide*2.4);
+    spawnBullet(_t1,_t2.copy(p.fwd).multiplyScalar(950).add(p.vel),p,true);
+  }
+}
+function setRemoteState(p,a){
+  const r=p.net||(p.net={pos:new V3(),fwd:new V3(),yaw:0,pitch:0,roll:0,speed:150,dead:false,shoot:false,hp:100,inv:false,age:0});
+  r.pos.set(a[0],a[1],a[2]);r.yaw=a[3];r.pitch=a[4];r.roll=a[5];r.speed=a[6];r.dead=!!a[7];r.shoot=!!a[8];r.hp=a[9];r.inv=!!a[10];r.age=0;
+  const cp=Math.cos(r.pitch);r.fwd.set(-Math.sin(r.yaw)*cp,Math.sin(r.pitch),-Math.cos(r.yaw)*cp);
+}
+const packPlayer=p=>[R1(p.pos.x),R1(p.pos.y),R1(p.pos.z),R3(p.yaw),R3(p.pitch),R3(p.roll),R1(p.speed),p.dead?1:0,p.shooting&&!p.dead?1:0,Math.round(p.hp),p.inv>0?1:0];
 function updatePlayer(p,dt,playing){
   if(!p.active){p.obj.visible=false;return;}
+  if(!isLocal(p)){updateRemotePlayer(p,dt);return;}
   if(p.dead){
     p.respawnT-=dt;
     if(p.respawnT<=0&&playing&&escort.alive)respawnPlayer(p);
     return;
   }
   const c=playing?readCtrl(p):NOCTRL;
+  p.shooting=c.shoot;
   if(c.missile)fireMissile(p);
   const turn=c.turn,pin=S.invert?-c.pitch:c.pitch;
   p.yaw-=turn*1.15*dt;
@@ -860,15 +971,19 @@ function fireMissile(p){
   if(S.state!=='play'||!p.active||p.dead||p.missiles<=0)return;
   p.missiles--;
   const locked=p.lock&&p.lockT>=.6;
-  const g=new THREE.Group();
-  const body=new THREE.CylinderGeometry(.22,.22,3.4,8);body.rotateX(Math.PI/2);g.add(new THREE.Mesh(body,new THREE.MeshLambertMaterial({color:0xeeeeee})));
-  const tip=new THREE.ConeGeometry(.22,.7,8);tip.rotateX(-Math.PI/2);const tm=new THREE.Mesh(tip,new THREE.MeshLambertMaterial({color:p.i?0x3f86d0:0xd04030}));tm.position.z=-2;g.add(tm);
   _right.set(Math.cos(p.yaw),0,-Math.sin(p.yaw));
   const side=p.missiles%2?1:-1;
   const pos=p.pos.clone().addScaledVector(_right,side*1.8).add(_t1.set(0,-1.1,0));
-  g.position.copy(pos);scene.add(g);
-  missiles.push({obj:g,pos,dir:p.fwd.clone(),speed:p.speed,target:p.lock,turn:locked?3.4:1.4,life:7,owner:p});
+  spawnMissile(p,pos,p.fwd,p.speed,p.lock,locked,false);
+  if(S.online)netSend({t:'ms',o:p.i,p:[R1(pos.x),R1(pos.y),R1(pos.z)],d:[R3(p.fwd.x),R3(p.fwd.y),R3(p.fwd.z)],s:R1(p.speed),tg:p.lock?p.lock.id:-1,lk:locked?1:0});
   noise(.7,1800,.22,300);
+}
+function spawnMissile(owner,pos,dir,speed,target,locked,visual){
+  const g=new THREE.Group();
+  const body=new THREE.CylinderGeometry(.22,.22,3.4,8);body.rotateX(Math.PI/2);g.add(new THREE.Mesh(body,new THREE.MeshLambertMaterial({color:0xeeeeee})));
+  const tip=new THREE.ConeGeometry(.22,.7,8);tip.rotateX(-Math.PI/2);const tm=new THREE.Mesh(tip,new THREE.MeshLambertMaterial({color:owner.i?0x3f86d0:0xd04030}));tm.position.z=-2;g.add(tm);
+  g.position.copy(pos);scene.add(g);
+  missiles.push({obj:g,pos:pos.clone(),dir:dir.clone(),speed,target,turn:locked?3.4:1.4,life:7,owner,visual});
 }
 
 /* ---------- missiles ---------- */
@@ -889,7 +1004,10 @@ function updateMissiles(dt){
     _t1.copy(m.pos).addScaledVector(m.dir,-2);
     emit(smoke,_t1,rand(-1,1),rand(-1,1),rand(-1,1),1.3,1.6,8,.5,0xe8e8e8,0xb8bcc0,.5,0);
     emit(fire,_t1,0,0,0,.08,2.2,1,1,0xfff0c0,0xff8030,0,0);
-    if(hit){killEnemy(hit,m.owner);m.owner.score+=50;}
+    if(hit&&!m.visual){
+      if(isHost()){killEnemy(hit,m.owner);m.owner.score+=50;}
+      else{netSend({t:'hit',id:hit.id,m:1});sparks(m.pos);}
+    }
     if(hit||m.life<=0||m.pos.y<0){if(!hit)explosion(m.pos,.5);scene.remove(m.obj);missiles.splice(i,1);}
   }
 }
@@ -897,8 +1015,21 @@ function updateMissiles(dt){
 /* ---------- enemies ---------- */
 function spawnEnemy(pos,hunter){
   const obj=enemyTpl.clone();scene.add(obj);
-  const e={obj,pos:pos.clone(),dir:escort.pos.clone().sub(pos).normalize(),speed:rand(150,175),hp:5,state:'attack',stT:0,fireT:rand(.2,1.2),burst:0,hunter,roll:0,aimOff:new V3(rand(-15,15),rand(-5,5),rand(-25,25)),breakDir:new V3(),dead:false};
+  const e={id:++S.eid,obj,pos:pos.clone(),npos:pos.clone(),age:0,nroll:0,dir:escort.pos.clone().sub(pos).normalize(),speed:rand(150,175),hp:5,state:'attack',stT:0,fireT:rand(.2,1.2),burst:0,hunter,roll:0,aimOff:new V3(rand(-15,15),rand(-5,5),rand(-25,25)),breakDir:new V3(),dead:false};
   obj.position.copy(pos);enemies.push(e);
+  return e;
+}
+const enemyById=id=>{for(const e of enemies)if(e.id===id&&!e.dead)return e;return null;};
+function updateRemoteEnemies(dt){
+  for(const e of enemies){
+    if(e.dead)continue;
+    e.age+=dt;
+    _t1.copy(e.npos).addScaledVector(e.dir,e.speed*Math.min(e.age,.5));
+    if(e.pos.distanceTo(_t1)>150)e.pos.copy(_t1);else e.pos.lerp(_t1,1-Math.exp(-dt*12));
+    e.roll+=(e.nroll-e.roll)*Math.min(1,dt*8);
+    e.obj.position.copy(e.pos);_t2.copy(e.pos).sub(e.dir);e.obj.lookAt(_t2);e.obj.rotateZ(e.roll);
+  }
+  for(let i=enemies.length-1;i>=0;i--)if(enemies[i].dead)enemies.splice(i,1);
 }
 function spawnWave(){
   S.wave++;const d=DIFF[S.diff];
@@ -911,12 +1042,19 @@ function spawnWave(){
   for(let i=0;i<n;i++)spawnEnemy(c.clone().add(_t1.set(rand(-170,170),rand(-80,80),rand(-170,170))),i<hunters);
   const where=Math.abs(base)>2.2?'מאחור':base>.55?'מימין':base<-.55?'משמאל':'מלפנים';
   banner(`גל ${S.wave}`,`${n} מטוסי אויב מתקרבים ${where}`);
+  if(S.online)netSend({t:'ban',h:`גל ${S.wave}`,s:`${n} מטוסי אויב מתקרבים`});
   beep(520,.12,.08);setTimeout(()=>beep(520,.12,.08),180);
 }
-function hitEnemy(e,dmg,pt,by){e.hp-=dmg;if(by)by.score+=10;sparks(pt);if(e.hp<=0)killEnemy(e,by);}
+function hitEnemy(e,dmg,pt,by){
+  if(!isHost()){sparks(pt);netSend({t:'hit',id:e.id,m:0});return;}
+  e.hp-=dmg;if(by)by.score+=10;sparks(pt);if(e.hp<=0)killEnemy(e,by);
+}
 function killEnemy(e,by){
   if(e.dead)return;e.dead=true;explosion(e.pos,1.2);scene.remove(e.obj);
-  if(by){by.kills++;by.score+=100;}
+  if(isHost()){
+    if(by){by.kills++;by.score+=100;}
+    if(S.online)netSend({t:'kill',id:e.id});
+  }
   for(const p of players)if(p.lock===e)p.lock=null;
 }
 function nearestPlayer(pos,max){let best=null,bd=max;for(const p of players){if(!p.active||p.dead)continue;const d=p.pos.distanceTo(pos);if(d<bd){bd=d;best=p;}}return best;}
@@ -968,12 +1106,12 @@ function updateBullets(dt){
   for(let i=bullets.length-1;i>=0;i--){
     const b=bullets[i];b.life-=dt;_prev.copy(b.pos);b.pos.addScaledVector(b.vel,dt);
     let dead=b.life<=0||b.pos.y<0;
-    if(!dead){
+    if(!dead&&!b.visual){
       if(b.owner){for(const e of enemies){if(!e.dead&&segSphere(_prev,b.pos,e.pos,9)){hitEnemy(e,1,b.pos,b.owner);dead=true;break;}}}
       else{
         const hp=escortHit(_prev,b.pos);
         if(hp){damageEscort(hp);dead=true;}
-        else for(const p of players){if(p.active&&!p.dead&&p.inv<=0&&segSphere(_prev,b.pos,p.pos,5.5)){damagePlayer(p);dead=true;break;}}
+        else for(const p of players){if(p.active&&!p.dead&&p.inv<=0&&isLocal(p)&&segSphere(_prev,b.pos,p.pos,5.5)){damagePlayer(p);dead=true;break;}}
       }
     }
     if(dead){b.mesh.visible=false;bulletPool.push(b);bullets[i]=bullets[bullets.length-1];bullets.pop();}
@@ -1001,8 +1139,9 @@ function updateCamera(p,dt){
 }
 function updateWorld(){
   let back=-1e9,cx=0,n=0;
-  for(const p of players){if(p.active||p.i===0){back=Math.max(back,p.cam.position.z);cx+=p.cam.position.x;n++;}}
-  cx/=n;
+  const vs=S.state==='menu'?[P1]:viewers();
+  for(const p of vs){back=Math.max(back,p.cam.position.z);cx+=p.cam.position.x;n++;}
+  cx/=Math.max(1,n);
   for(const cl of clouds){if(cl.position.z>back+1800){cl.position.z-=11500;cl.position.x=cx+rand(-3600,3600);cl.position.y=rand(250,1300);}}
   for(const m of mountains){if(m.g.position.z>back+2600){m.g.position.z-=11500;m.g.position.x=(Math.random()<.5?-1:1)*rand(1300,5200);}}
 }
@@ -1032,7 +1171,8 @@ function renderView(cam,x,w){
   renderer.render(scene,cam);
 }
 function renderAll(){
-  if(S.state==='menu'||S.NP===1)renderView(P1.cam,0,W);
+  if(S.state!=='menu'&&S.online)renderView(players[S.me].cam,0,W);
+  else if(S.state==='menu'||S.NP===1)renderView(P1.cam,0,W);
   else{renderView(P1.cam,0,W/2);renderView(players[1].cam,W/2,W/2);}
 }
 
@@ -1052,6 +1192,7 @@ function drawHUD(){
   hctx.setTransform(dpr,0,0,dpr,0,0);hctx.clearRect(0,0,W,H);
   if(S.state==='menu'||S.endShown)return;
   hctx.direction='rtl';
+  if(S.online){const me=players[S.me];drawView(me,0,W);drawRadar(me,radars[0]);return;}
   if(S.NP===1)drawView(P1,0,W);
   else{drawView(P1,0,W/2);drawView(players[1],W/2,W/2);}
   drawRadar(P1,radars[0]);
@@ -1110,7 +1251,7 @@ function drawView(me,vx,vw){
     const cx=vx+vw/2,cy=H*.42;
     hctx.textAlign='center';hctx.shadowColor='rgba(0,0,0,.6)';hctx.shadowBlur=12;
     hctx.fillStyle=me.color;hctx.font='400 '+Math.round(clamp(vw*.07,26,48))+'px "Secular One",sans-serif';
-    hctx.fillText((S.NP===2?me.name+' · ':'')+me.deathMsg,cx,cy);
+    hctx.fillText((S.NP===2&&!S.online?me.name+' · ':'')+me.deathMsg,cx,cy);
     hctx.fillStyle='#eef3f8';hctx.font='500 15px "IBM Plex Sans Hebrew",sans-serif';
     hctx.fillText('חוזר לקרב בעוד '+Math.max(1,Math.ceil(me.respawnT)),cx,cy+30);
     hctx.shadowBlur=0;
@@ -1150,8 +1291,8 @@ function updateUI(dt){
   $('distVal').textContent=rem>0?(rem/1000).toFixed(1)+' ק״מ ליעד':'הגעתם!';
   $('progFill').style.width=pct+'%';$('progPlane').style.right=pct+'%';
   $('kills').textContent=teamKills();$('score').textContent=teamScore();$('wave').textContent=S.wave;
-  for(const p of players){
-    if(!p.active)continue;const u=ui[p.i];
+  for(const p of viewers()){
+    const u=ui[p.i];
     u.hp.style.width=Math.max(0,p.hp)+'%';
     u.spd.textContent=p.dead?'—':Math.round(p.speed*3.6);
     u.alt.textContent=p.dead?'—':Math.round(p.pos.y);
@@ -1160,16 +1301,17 @@ function updateUI(dt){
   const w=[];
   if(S.state==='play'){
     if(S.t-S.escHitT<.9)w.push('התובלה תחת אש!');
-    for(const p of players){
-      if(!p.active||p.dead)continue;
-      const pre=S.NP===2?p.name+': ':'';
+    if(S.online&&performance.now()-NET.lastRecv>2500)w.push('החיבור לחבר איטי…');
+    for(const p of viewers()){
+      if(p.dead)continue;
+      const pre=S.NP===2&&!S.online?p.name+': ':'';
       if(p.pos.y<140)w.push(pre+'גובה נמוך! משוך למעלה');
       else if(p.pos.distanceTo(escort.pos)>3200)w.push(pre+'התרחקת מהתובלה');
     }
   }
   const wn=$('warn');if(w.length){wn.textContent=w.join(' · ');wn.hidden=false;}else wn.hidden=true;
   if(engGain&&ac){
-    const alive=players.filter(p=>p.active&&!p.dead);
+    const alive=viewers().filter(p=>!p.dead);
     engGain.gain.value=S.state==='play'&&alive.length?.035:0;
     if(alive.length)engOsc.frequency.value=55+Math.max(...alive.map(p=>p.speed))*.22;
   }
@@ -1182,10 +1324,10 @@ function updateGame(dt){
   if(playing)S.time+=dt;
   updateEscort(dt,S.state!=='lost');
   for(const p of players)updatePlayer(p,dt,playing);
-  updateEnemies(dt);
+  if(isHost())updateEnemies(dt);else updateRemoteEnemies(dt);
   updateBullets(dt);
   updateMissiles(dt);
-  if(playing){
+  if(playing&&isHost()){
     if(escort.dist<TOTAL-1100){
       S.waveTimer-=dt;
       if(enemies.length===0&&S.waveTimer>4)S.waveTimer=4;
@@ -1194,7 +1336,7 @@ function updateGame(dt){
     if(escort.dist>=TOTAL)winGame();
   }
   for(let i=S.booms.length-1;i>=0;i--){const b=S.booms[i];b.t-=dt;if(b.t<=0){explosion(b.pos,b.sc);if(escort.alive){escort.alive=false;escort.obj.visible=false;for(const p of players)p.shake=1;}S.booms.splice(i,1);}}
-  for(const p of players)if(p.active)updateCamera(p,dt);
+  for(const p of viewers())updateCamera(p,dt);
   if(S.state==='won'||S.state==='lost'){S.endT-=dt;if(S.endT<=0&&!S.endShown)showEnd();}
 }
 function frame(now){
@@ -1204,6 +1346,7 @@ function frame(now){
   if(S.state==='paused'){renderAll();return;}
   S.t+=dt;
   if(S.state==='menu')updateMenu(dt);else updateGame(dt);
+  netTick(dt);
   updatePool(fire,dt);updatePool(smoke,dt);
   updateWorld();
   renderAll();
@@ -1237,7 +1380,7 @@ function renderBoard(){
   const names=Object.keys(db.players).sort((a,b)=>db.players[b].best-db.players[a].best);
   $('board').hidden=!names.length;
   const tb=$('boardTbl').tBodies[0];tb.textContent='';
-  const c1=$('pilotName').value.trim(),c2=S.NP===2?$('pilotName2').value.trim():null;
+  const c1=$('pilotName').value.trim(),c2=S.mode==='split'?$('pilotName2').value.trim():null;
   for(const n of names){
     const p=db.players[n],tr=document.createElement('tr');
     if(n===c1)tr.className='me';else if(n===c2)tr.className='me2';
@@ -1249,35 +1392,227 @@ function renderBoard(){
   }
 }
 function updateMenuMode(){
-  const two=S.NP===2;
-  $('pilot2').hidden=!two;
-  $('p1Label').innerHTML=two?'<span class="c1">שחקן 1</span> · צד שמאל של המסך':'שם הטייס (התוצאות נשמרות לפי השם)';
-  $('keysDesk').hidden=two||isTouch;$('keysTouch').hidden=two||!isTouch;$('keys2').hidden=!two;
-  for(const b of $('modeSeg').children)b.setAttribute('aria-pressed',String(+b.dataset.n===S.NP));
-  if(!two)nameTarget=$('pilotName');
+  const split=S.mode==='split',net=S.mode==='net';
+  S.NP=S.mode==='solo'?1:2;
+  $('pilot2').hidden=!split;$('netBox').hidden=!net;
+  $('p1Label').innerHTML=split?'<span class="c1">שחקן 1</span> · צד שמאל של המסך':net?'השם שלך (החבר יראה אותו)':'שם הטייס (התוצאות נשמרות לפי השם)';
+  $('keysDesk').hidden=split||isTouch;$('keysTouch').hidden=split||!isTouch;$('keys2').hidden=!split;
+  const key={solo:'1',split:'2',net:'net'}[S.mode];
+  for(const b of $('modeSeg').children)b.setAttribute('aria-pressed',String(b.dataset.n===key));
+  if(!split)nameTarget=$('pilotName');
+  refreshNetUI();
   renderBoard();
 }
 $('pilotName').value=db.last||'';
 $('pilotName2').value=db.last2||'';
 for(const id of['pilotName','pilotName2']){
-  $(id).addEventListener('input',renderBoard);
+  $(id).addEventListener('input',()=>{renderBoard();if(id==='pilotName'&&NET.connected)netSend({t:'name',n:myName()});});
   $(id).addEventListener('focus',()=>{nameTarget=$(id);});
 }
 
+/* ---------- online play (PeerJS) ---------- */
+const ON_SITE=/github\.io$/.test(location.hostname)||location.protocol==='file:'||location.hostname==='localhost';
+const SITE='odedkrams.github.io/escort';
+const ALPH='ABCDEFGHJKMNPQRSTUVWXYZ23456789',PID=c=>'odk-escort-v1-'+c;
+const NET_IDLE='פתח חדר ושלח לחבר את הקוד, או הקלד קוד שקיבלת.';
+function netStatus(msg,kind){const el=$('netStatus');el.textContent=msg;el.className='net-status'+(kind?' '+kind:'');}
+function netSend(m){const c=NET.conn;if(c&&c.open){try{c.send(m);}catch(e){}}}
+function refreshNetUI(){
+  const net=S.mode==='net',sb=$('startBtn');
+  $('diffSeg').hidden=net&&NET.connected&&NET.role==='guest';
+  if(!net){sb.hidden=false;sb.disabled=false;return;}
+  if(NET.connected){
+    if(NET.role==='host'){sb.hidden=false;sb.disabled=false;netStatus(`${NET.remoteName||'החבר'} הצטרף! בחר רמת קושי ולחץ המראה.`,'ok');}
+    else{sb.hidden=true;netStatus(`מחובר לחדר של ${NET.remoteName||'המארח'}. מחכים שילחץ המראה.`,'ok');}
+  }else{sb.hidden=false;sb.disabled=true;}
+}
+function netReset(){
+  clearTimeout(NET.timer);
+  const c=NET.conn,p=NET.peer;
+  Object.assign(NET,{conn:null,peer:null,role:null,code:'',connected:false,remoteName:''});
+  if(c)try{c.close();}catch(e){}
+  if(p)try{p.destroy();}catch(e){}
+  $('roomBox').hidden=true;
+  refreshNetUI();
+}
+function peerOK(){
+  if(typeof Peer!=='undefined')return true;
+  netStatus(ON_SITE?'לא הצלחתי לטעון את רכיב החיבור. בדוק את האינטרנט ורענן את הדף.':`המשחק ברשת עובד רק באתר ${SITE}, לא בתצוגה המקדימה כאן.`,'err');
+  return false;
+}
+function hostRoom(){
+  netReset();if(!peerOK())return;
+  initAudio();
+  NET.role='host';NET.code=Array.from({length:5},()=>ALPH[(Math.random()*ALPH.length)|0]).join('');
+  netStatus('פותח חדר…');
+  let peer;
+  try{peer=NET.peer=new Peer(PID(NET.code),{debug:0});}catch(e){netReset();netStatus('הדפדפן הזה לא תומך במשחק ברשת.','err');return;}
+  peer.on('open',()=>{
+    if(NET.peer!==peer)return;
+    $('roomCode').textContent=NET.code;
+    $('roomLink').value=location.origin+location.pathname+'#room-'+NET.code;
+    $('roomBox').hidden=false;netStatus('מחכים שחבר יצטרף…');
+  });
+  peer.on('connection',c=>{
+    if(NET.peer!==peer)return;
+    if(NET.connected||(S.online&&S.state!=='menu')){c.on('open',()=>{try{c.send({t:'full'});}catch(e){}setTimeout(()=>{try{c.close();}catch(e){}},400);});return;}
+    bindConn(c);
+  });
+  peer.on('disconnected',()=>{if(NET.peer===peer&&!peer.destroyed)try{peer.reconnect();}catch(e){}});
+  peer.on('error',err=>onPeerError(err,peer));
+}
+function joinRoom(raw){
+  const code=String(raw||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length!==5){netStatus('קוד חדר הוא 5 תווים, למשל K7QPX.','err');return;}
+  netReset();if(!peerOK())return;
+  initAudio();
+  NET.role='guest';NET.code=code;
+  netStatus('מתחבר לחדר '+code+'…');
+  let peer;
+  try{peer=NET.peer=new Peer({debug:0});}catch(e){netReset();netStatus('הדפדפן הזה לא תומך במשחק ברשת.','err');return;}
+  peer.on('open',()=>{
+    if(NET.peer!==peer)return;
+    bindConn(peer.connect(PID(code),{reliable:true,serialization:'json'}));
+    NET.timer=setTimeout(()=>{if(!NET.connected&&NET.peer===peer){netReset();netStatus('לא הצלחתי להתחבר לחדר. בדוק את הקוד ונסה שוב.','err');}},15000);
+  });
+  peer.on('error',err=>onPeerError(err,peer));
+}
+function onPeerError(err,peer){
+  if(NET.peer!==peer)return;
+  const t=err&&err.type;
+  if(t==='unavailable-id'&&NET.role==='host'){hostRoom();return;}
+  if(NET.connected&&['network','disconnected','server-error','socket-error','socket-closed'].includes(t))return;
+  netReset();
+  if(t==='peer-unavailable')netStatus('לא נמצא חדר עם הקוד הזה. בדוק את הקוד ונסה שוב.','err');
+  else if(t==='browser-incompatible')netStatus('הדפדפן הזה לא תומך במשחק ברשת. נסה Chrome, Edge או Safari עדכניים.','err');
+  else if(!ON_SITE)netStatus(`המשחק ברשת עובד רק באתר ${SITE}, לא בתצוגה המקדימה כאן.`,'err');
+  else netStatus('אין חיבור לשרת החיבורים. בדוק את האינטרנט ונסה שוב.','err');
+}
+function bindConn(c){
+  NET.conn=c;
+  c.on('open',()=>{
+    if(NET.conn!==c)return;
+    clearTimeout(NET.timer);
+    NET.connected=true;NET.lastRecv=performance.now();
+    netSend({t:'hi',n:myName()});
+    refreshNetUI();beep(880,.12,.08);
+  });
+  c.on('data',m=>{if(NET.conn===c)onNetMsg(m);});
+  c.on('close',()=>{if(NET.conn===c)onNetLost();});
+  c.on('error',()=>{if(NET.conn===c)onNetLost();});
+}
+function onNetLost(){
+  const was=NET.connected,name=NET.remoteName||'החבר';
+  const c=NET.conn;NET.conn=null;NET.connected=false;
+  if(c)try{c.close();}catch(e){}
+  if(NET.role==='guest'){
+    const p=NET.peer;NET.peer=null;NET.role=null;if(p)try{p.destroy();}catch(e){}
+    if(S.state!=='menu')toMenu();
+    netStatus(was?'החיבור למארח נותק.':'לא הצלחתי להתחבר לחדר.','err');
+  }else{
+    NET.remoteName='';
+    if(S.online&&S.state!=='menu'){players[1].active=false;players[1].obj.visible=false;banner(`${name} התנתק`,'ממשיכים לבד');}
+    refreshNetUI();
+    netStatus(`${name} התנתק. החדר עדיין פתוח, אפשר להצטרף שוב עם אותו קוד.`,'err');
+  }
+}
+function buildSnap(){
+  const e=[];
+  for(const x of enemies)if(!x.dead)e.push([x.id,R1(x.pos.x),R1(x.pos.y),R1(x.pos.z),R3(x.dir.x),R3(x.dir.y),R3(x.dir.z),R3(x.roll),R1(x.speed)]);
+  const m={t:'s',T:R3(escort.t),d:R1(escort.dist),hp:R1(escort.hp),eh:S.t-S.escHitT<.3?1:0,w:S.wave,p:packPlayer(players[0]),sc:[players[0].score,players[1].score],k:[players[0].kills,players[1].kills],e,b:S.newEB};
+  S.newEB=[];return m;
+}
+function applySnap(m){
+  if(!S.online||S.state==='menu')return;
+  const dd=m.d-escort.dist;if(Math.abs(dd)>40)escort.dist=m.d;else escort.dist+=dd*.3;
+  const dT=m.T-escort.t;if(Math.abs(dT)>1)escort.t=m.T;else escort.t+=dT*.3;
+  if(S.state==='play')escort.hp=m.hp;
+  if(m.eh)S.escHitT=S.t;
+  S.wave=m.w;
+  setRemoteState(players[0],m.p);
+  for(let i=0;i<2;i++){players[i].score=m.sc[i];players[i].kills=m.k[i];}
+  const seen=new Set();
+  for(const a of m.e){
+    seen.add(a[0]);
+    let e=enemyById(a[0]);
+    if(!e){e=spawnEnemy(_t3.set(a[1],a[2],a[3]),false);e.id=a[0];}
+    e.npos.set(a[1],a[2],a[3]);e.dir.set(a[4],a[5],a[6]);e.nroll=a[7];e.speed=a[8];e.age=0;
+  }
+  for(const e of enemies)if(!e.dead&&!seen.has(e.id)){e.dead=true;scene.remove(e.obj);}
+  for(const b of m.b)spawnBullet(_t1.set(b[0],b[1],b[2]),_t2.set(b[3],b[4],b[5]),null);
+}
+function onNetMsg(m){
+  if(!m||typeof m!=='object')return;
+  NET.lastRecv=performance.now();
+  const host=NET.role==='host',inGame=S.online&&S.state!=='menu';
+  switch(m.t){
+    case 'hi':case 'name':
+      NET.remoteName=String(m.n||'').slice(0,16);
+      if(S.online)players[1-S.me].name=NET.remoteName||'החבר';
+      refreshNetUI();break;
+    case 'full':netReset();netStatus('החדר הזה תפוס כרגע. בקש מהחבר לפתוח חדר חדש.','err');break;
+    case 'start':if(!host&&S.mode==='net'){S.diff=DIFF[m.diff]?m.diff:'normal';startGame();}break;
+    case 'menu':if(S.state!=='menu')toMenu();break;
+    case 's':if(!host)applySnap(m);break;
+    case 'g':if(host&&inGame&&players[1].active)setRemoteState(players[1],m.p);break;
+    case 'hit':
+      if(host&&inGame&&S.state==='play'){const e=enemyById(m.id);if(e){if(m.m){killEnemy(e,players[1]);players[1].score+=50;}else hitEnemy(e,1,e.pos,players[1]);}}
+      break;
+    case 'kill':if(!host&&inGame){const e=enemyById(m.id);if(e)killEnemy(e,null);}break;
+    case 'ms':
+      if(inGame){const o=players[m.o];if(o)spawnMissile(o,_t1.set(m.p[0],m.p[1],m.p[2]),_t2.set(m.d[0],m.d[1],m.d[2]),m.s,m.tg>=0?enemyById(m.tg):null,!!m.lk,true);}
+      break;
+    case 'ban':if(inGame)banner(m.h,m.s);break;
+    case 'end':
+      if(!host&&inGame&&S.state==='play'){if(m.won)winGame();else loseGame();for(let i=0;i<2;i++){players[i].score=m.sc[i];players[i].kills=m.k[i];}}
+      break;
+  }
+}
+function netTick(dt){
+  if(!NET.connected||!S.online||S.state==='menu')return;
+  NET.sendT-=dt;
+  if(NET.sendT>0)return;
+  NET.sendT=.05;
+  if(NET.role==='host')netSend(buildSnap());
+  else netSend({t:'g',p:packPlayer(players[S.me])});
+}
+setInterval(()=>{if(!NET.connected)return;netSend({t:'p'});if(performance.now()-NET.lastRecv>12000)onNetLost();},1000);
+addEventListener('pagehide',()=>{if(NET.peer)try{NET.peer.destroy();}catch(e){}});
+
+$('hostBtn').addEventListener('click',hostRoom);
+$('joinBtn').addEventListener('click',()=>joinRoom($('joinCode').value));
+$('copyBtn').addEventListener('click',()=>{
+  const inp=$('roomLink'),btn=$('copyBtn');
+  const done=()=>{btn.textContent='הועתק!';setTimeout(()=>{btn.textContent='העתק קישור';},1600);};
+  try{navigator.clipboard.writeText(inp.value).then(done,()=>{inp.select();});}catch(e){inp.select();}
+});
+
 /* ---------- buttons ---------- */
-$('startBtn').addEventListener('click',startGame);
-$('againBtn').addEventListener('click',startGame);
-$('menuBtn').addEventListener('click',toMenu);
+$('startBtn').addEventListener('click',menuStart);
+$('againBtn').addEventListener('click',menuStart);
+$('menuBtn').addEventListener('click',leaveToMenu);
 $('quitBtn').addEventListener('click',toMenu);
 $('resumeBtn').addEventListener('click',()=>setPaused(false));
 $('pauseBtn').addEventListener('click',()=>setPaused(true));
 $('invert').addEventListener('change',e=>{S.invert=e.target.checked;});
 $('sound').addEventListener('change',e=>setSound(e.target.checked));
 $('diffSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.diff=b.dataset.d;for(const x of $('diffSeg').children)x.setAttribute('aria-pressed',x===b?'true':'false');});
-$('modeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.NP=+b.dataset.n;updateMenuMode();});
+$('modeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const mode=b.dataset.n==='net'?'net':b.dataset.n==='2'?'split':'solo';
+  if(mode!=='net'&&NET.peer){netReset();netStatus(NET_IDLE);}
+  S.mode=mode;updateMenuMode();
+});
 
 updateMenuMode();
 resetGame();S.state='menu';
+function joinFromHash(){
+  const h=location.hash.match(/^#room-([A-Za-z0-9]{5})$/);
+  if(!h||S.state!=='menu'||(NET.role==='host'&&NET.code===h[1].toUpperCase()))return;
+  S.mode='net';$('joinCode').value=h[1].toUpperCase();updateMenuMode();joinRoom(h[1]);
+}
+addEventListener('hashchange',joinFromHash);
+joinFromHash();
 requestAnimationFrame(frame);
 })();
 </script>
