@@ -389,7 +389,7 @@ h3{font-family:var(--display);font-weight:400;font-size:17px;margin:0 0 6px}
         <button data-s="0" aria-pressed="true">שחקן 1</button>
         <button data-s="1" aria-pressed="false">שחקן 2</button>
       </div>
-      <p class="note">כל מטוס אויב שמפילים שווה 10 מטבעות. כשמטוס התובלה מגיע ליעד מקבלים עוד 50. המטבעות נשמרים לפי שם הטייס.</p>
+      <p class="note">כל מטוס אויב שמפילים שווה 10 מטבעות. כשמטוס התובלה מגיע ליעד מקבלים עוד 200. המטבעות נשמרים לפי שם הטייס.</p>
       <div class="plane-grid" id="planeGrid"></div>
       <div class="row-btns"><button class="btn" id="hangarBack">חזרה לתפריט</button></div>
     </div>
@@ -900,7 +900,7 @@ function banner(h,s){$('bH').textContent=h;$('bS').textContent=s||'';$('banner')
 function winGame(){
   if(S.state!=='play')return;
   S.state='won';S.endT=3.2;
-  for(const p of players)if(p.active)addCoins(p,50);
+  for(const p of players)if(p.active)addCoins(p,200);
   if(isHost()){
     for(const p of players)if(p.active)p.score+=Math.round(escort.hp*20);
     if(S.online)netSend({t:'end',won:1,sc:players.map(p=>p.score),k:players.map(p=>p.kills)});
